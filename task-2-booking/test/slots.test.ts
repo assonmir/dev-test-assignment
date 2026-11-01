@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { getSlots } from '../src/slots.ts';
 import { overlaps, toMinutes } from '../src/time.ts';
-import type { Master, Service } from '../src/types.ts';
+import type { Booking, Master, Service } from '../src/types.ts';
 
 const day = { from: '10:00', to: '13:00', breaks: [] };
 
@@ -34,6 +34,49 @@ test('getSlots: выходной', () => {
   assert.deepEqual(getSlots(master, cut, '2030-11-23', []), []);
 });
 
-test.todo('getSlots: слот не пересекает перерыв');
-test.todo('getSlots: занятое время не выдаётся, отменённые записи не мешают');
-test.todo('getSlots: прошедшее время не выдаётся');
+const mondayWith = (breaks: { from: string; to: string }[]): Master => ({
+  ...master,
+  schedule: { ...master.schedule, mon: { from: '10:00', to: '13:00', breaks } },
+});
+
+const booking = (over: Partial<Booking>): Booking => ({
+  id: 'bk-1',
+  masterId: 'm-1',
+  serviceId: 's-cut',
+  start: '2030-11-18T05:00:00.000Z', // 10:00 по Алматы
+  end: '2030-11-18T06:00:00.000Z', // 11:00 по Алматы
+  clientPhone: '+77012345678',
+  status: 'active',
+  ...over,
+});
+
+test('getSlots: слот не пересекает перерыв', () => {
+  const m = mondayWith([{ from: '11:00', to: '12:00' }]);
+  assert.deepEqual(getSlots(m, cut, '2030-11-18', []), ['10:00', '12:00']);
+});
+
+test('getSlots: занятое время не выдаётся, отменённые записи не мешают', () => {
+  const active = booking({
+    id: 'bk-a',
+    start: '2030-11-18T06:00:00.000Z', // 11:00
+    end: '2030-11-18T07:00:00.000Z', // 12:00
+  });
+  const cancelled = booking({ id: 'bk-c', status: 'cancelled' }); // 10:00-11:00
+  assert.deepEqual(getSlots(master, cut, '2030-11-18', [active, cancelled]), ['10:00', '12:00']);
+});
+
+test('getSlots: чужие записи другого мастера не мешают', () => {
+  const other = booking({ masterId: 'm-2' });
+  assert.equal(getSlots(master, cut, '2030-11-18', [other]).length, 9);
+});
+
+test('getSlots: прошедшее время не выдаётся', () => {
+  process.env.NOW = '2030-11-18T05:30:00Z'; // 10:30 по Алматы
+  try {
+    assert.deepEqual(getSlots(master, cut, '2030-11-18', []), [
+      '10:45', '11:00', '11:15', '11:30', '11:45', '12:00',
+    ]);
+  } finally {
+    delete process.env.NOW;
+  }
+});
