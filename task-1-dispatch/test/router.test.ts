@@ -82,4 +82,19 @@ test('geo: если в городе несколько филиалов, выб�
   assert.deepEqual(res, { orderId: 'o-1', branchId: 'b-ala-2', rule: 'geo' });
 });
 
-test.todo('лимит: заполненный филиал пропускается');
+test('лимит: заполненный филиал пропускается', () => {
+  const first = branch({ id: 'b-1', pickupPointIds: ['pp-1'] });
+  const second = branch({ id: 'b-2', lat: 43.3, lon: 77.0 });
+  const res = assignBranch(order({ pickupPointId: 'pp-1' }), [first, second], (id) => id === 'b-1');
+  assert.deepEqual(res, { orderId: 'o-1', branchId: 'b-2', rule: 'geo' });
+});
+
+test('лимит: все филиалы заполнены, заказ не распределяется', () => {
+  const res = assignBranch(order({ city: 'Конаев' }), [almaty, astana], () => true);
+  assert.deepEqual(res, { orderId: 'o-1', branchId: null, rule: 'unassigned' });
+});
+
+test('лимит: manual игнорирует лимит', () => {
+  const res = assignBranch(order({ manualBranchId: 'b-ast' }), [almaty, astana], () => true);
+  assert.deepEqual(res, { orderId: 'o-1', branchId: 'b-ast', rule: 'manual' });
+});

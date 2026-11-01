@@ -1,8 +1,32 @@
 import type { Assignment, Branch, Order } from './types.ts';
 import { distanceKm } from './geo.ts';
 
-export function assignBranch(order: Order, branches: Branch[]): Assignment {
-  const own = branches.filter((b) => b.storeId === order.storeId && b.active);
+export function assignBranch(
+  order: Order,
+  branches: Branch[],
+  isFull: (branchId: string) => boolean = () => false,
+): Assignment {
+  const result = pickBranch(order, branches);
+
+  // manual лимит не проверяет, unassigned проверять нечего
+  if (result.rule === 'manual' || result.branchId === null) return result;
+  if (!isFull(result.branchId)) return result;
+
+  // выбранный филиал заполнен: ближайший незаполненный филиал магазина
+  const free = activeBranches(order, branches).filter((b) => !isFull(b.id));
+  const nearest = findNearest(order, free);
+  if (nearest) return { orderId: order.id, branchId: nearest.id, rule: 'geo' };
+
+  return { orderId: order.id, branchId: null, rule: 'unassigned' };
+}
+
+function activeBranches(order: Order, branches: Branch[]): Branch[] {
+  return branches.filter((b) => b.storeId === order.storeId && b.active);
+}
+
+// выбор филиала по правилам, без учёта лимита
+function pickBranch(order: Order, branches: Branch[]): Assignment {
+  const own = activeBranches(order, branches);
 
   if (order.manualBranchId) {
     const manual = own.find((b) => b.id === order.manualBranchId);
